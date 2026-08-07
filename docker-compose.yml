@@ -1,0 +1,39 @@
+services:
+  ultrafeeder:
+    image: ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest
+    container_name: ultrafeeder
+    hostname: ultrafeeder
+    restart: unless-stopped
+
+    device_cgroup_rules:
+      - "c 189:* rwm"
+
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb:ro
+
+    ports:
+      - "8080:80"       # Local tar1090 map
+      - "30005:30005"   # Beast TCP output for feeders
+
+    environment:
+      - TZ=${FEEDER_TZ}
+
+      # RTL-SDR input
+      - READSB_DEVICE_TYPE=rtlsdr
+      - READSB_RTLSDR_DEVICE=${ADSB_SDR_SERIAL}
+      - READSB_GAIN=${ADSB_GAIN}
+      - READSB_RTLSDR_PPM=${ADSB_SDR_PPM}
+
+      # Receiver location
+      - READSB_LAT=${FEEDER_LAT}
+      - READSB_LON=${FEEDER_LONG}
+      - READSB_ALT=${FEEDER_ALT_M}m
+      - READSB_RX_LOCATION_ACCURACY=2
+      - READSB_STATS_RANGE=true
+
+      # Keep this container focused on decoding and local display.
+      # External feed clients consume Beast data from TCP port 30005.
+
+    tmpfs:
+      - /run:exec,size=256M
+      - /var/log
