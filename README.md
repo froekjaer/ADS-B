@@ -1,128 +1,54 @@
-# Raspberry Pi ADS-B Receiver
+# Raspberry Pi Radio Hub — ADS-B, AIS and DSC
 
-A simple, maintainable ADS-B receiver for Raspberry Pi using one RTL-SDR, `readsb` in Docker, and feeds to Flightradar24 and ADSBexchange.
+Receive-only radio station on **Raspberry Pi 5 + Ubuntu 24.04 ARM64**, extending the existing ADS-B project.
 
-This guide is written for a first-time Docker/Linux user and favors vendor-supported installation methods over fragile community feeder images.
+> **Implementation status:** ADS-B is the pre-existing design; AIS is a proposed, independently startable Docker service; DSC is a documented evaluation track (not a production-ready safety receiver). No end-to-end Pi/SDR hardware test has been performed by this repository update.
 
 ## Architecture
 
 ```text
-RTL-SDR USB (1090 MHz)
-        │
-        ▼
-┌──────────────────────────────┐
-│ Docker: ADS-B Ultrafeeder    │
-│ (readsb + tar1090)           │
-│ Beast TCP :30005             │
-└──────────────┬───────────────┘
-               │
-        ┌──────┴──────┐
-        │             │
-        ▼             ▼
-  Flightradar24   ADSBexchange
-    feeder          feeder
+RTL-SDR #1, 1090 MHz --> Ultrafeeder/readsb + tar1090 --> TCP Beast :30005 --> FR24 / ADSBexchange
+RTL-SDR #2, 162 MHz  --> AIS-Catcher                --> local AIS viewer + optional NMEA feeds
+RTL-SDR #3, 156.525  --> DSC evaluation/decoder     --> event log (not yet deployed)
 ```
 
-The decoder owns the RTL-SDR. Feeders only consume the decoded Beast stream, so the SDR is never shared between processes.
+**One SDR per live pipeline.** Do not point two independent USB decoders at the same dongle. For reliable identification, give each RTL2832U a distinct EEPROM serial after testing each dongle individually. Antennas must be suited to the respective bands.
 
-## Recommended hardware
+## Start here (Ubuntu Pi 5)
 
-- Raspberry Pi 4 or Raspberry Pi 5
-- Raspberry Pi OS Lite 64-bit
-- Good quality power supply (official PSU recommended)
-- microSD card, 16 GB or larger
-- RTL-SDR compatible USB receiver
-- 1090 MHz ADS-B antenna
-- Ethernet recommended; Wi-Fi also works
-- Optional 1090 MHz band-pass filter/LNA
+1. [Ubuntu installation and preflight](docs/09_ubuntu_pi5.md)
+2. [USB receivers, serials and RF](docs/10_multi_sdr.md)
+3. [AIS-Catcher installation](docs/11_ais.md)
+4. [DSC receiver research and acceptance tests](docs/12_dsc.md)
+5. [Operations, security and tests](docs/13_operations.md)
 
-## Installation order
+The original [ADS-B guide](docs/04_install_readsb.md), [FR24](docs/05_install_fr24.md), [ADSBexchange](docs/06_install_adsbexchange.md) and [troubleshooting](docs/08_troubleshooting.md) remain available. Older docs assume Raspberry Pi OS; **follow the Ubuntu-specific instructions above** for your Pi 5.
 
-1. [Hardware](docs/01_hardware.md)
-2. [Install Raspberry Pi OS](docs/02_install_raspberry_pi_os.md)
-3. [Install Docker](docs/03_install_docker.md)
-4. [Install the readsb decoder](docs/04_install_readsb.md)
-5. [Add Flightradar24](docs/05_install_fr24.md)
-6. [Add ADSBexchange](docs/06_install_adsbexchange.md)
-7. [Test everything](docs/07_testing.md)
-8. [Troubleshooting](docs/08_troubleshooting.md)
+## Deployment stages
 
-## Quick start
+- **Stage 0:** Inspect the host. No changes until `lsusb`, `uname -m`, Ubuntu version and existing services are understood.
+- **Stage 1:** Start ADS-B decoder alone, confirm tar1090 and live Beast TCP.
+- **Stage 2:** Start AIS with a **different dongle**; confirm local viewer and genuine AIS packets.
+- **Stage 3:** Enable FR24 and ADSBexchange only after decoder tests. Sharing may expose receiver location.
+- **Stage 4:** Investigate/test a separate channel-70 DSC receiver using recorded known-good signals before considering unattended operation.
 
-After Raspberry Pi OS and Docker are installed:
+## Repository files
 
-```bash
-sudo mkdir -p /opt/adsb
-sudo chown "$USER":"$USER" /opt/adsb
-cd /opt/adsb
-```
+- `docker-compose.yml`: existing ADS-B decoder (unchanged in this PR).
+- `docker-compose.ais.yml`: optional AIS receiver (only started when explicitly included).
+- `ais/config.json.example`: AIS serial and local viewer settings.
+- `.env.example`: station-specific ADS-B values.
+- `docs/`: beginner instructions and runbook.
 
-Clone this repository:
+## Safety
 
-```bash
-git clone https://github.com/froekjaer/ADS-B.git .
-```
+**Do not use this amateur receive-only SDR system as a distress-alerting service.** DSC decoding is experimental until independently validated, and even then does not replace approved marine radio/GMDSS equipment. Do not transmit on DSC channel 70, and respect applicable monitoring/data protection rules. Do not expose feeder ports or web UIs to the Internet without proper authentication/network controls.
 
-Create your local configuration:
+## Sources
 
-```bash
-cp .env.example .env
-nano .env
-```
+- [SDR-Enthusiasts Ultrafeeder](https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder)
+- [AIS-Catcher Docker](https://jvde-github.github.io/AIS-catcher-docs/installation/docker/)
+- [AIS-Catcher JSON configuration](https://jvde-github.github.io/AIS-catcher-docs/usage/json-configuration/)
+- [SDRangel DSC demodulator](https://github.com/f4exb/sdrangel/blob/master/plugins/channelrx/demoddsc/readme.md)
 
-Then start the decoder:
-
-```bash
-docker compose up -d
-```
-
-Check it:
-
-```bash
-docker compose ps
-docker compose logs --tail=50 ultrafeeder
-```
-
-Open the local map in a browser:
-
-```text
-http://<PI-IP>:8080
-```
-
-The Beast feed used by FR24 and ADSBexchange is available on TCP port `30005`.
-
-## Design principles
-
-- One SDR, one decoder.
-- Feed many networks from the same decoded data.
-- Keep secrets and station-specific values in `.env`.
-- Prefer official feeder installers for FR24 and ADSBexchange.
-- Avoid giving feeder software direct access to the RTL-SDR.
-- Keep the installation easy to update and troubleshoot.
-
-## Updating the decoder
-
-```bash
-cd /opt/adsb
-docker compose pull
-docker compose up -d
-```
-
-## Useful status commands
-
-```bash
-docker compose ps
-docker compose logs --tail=100 ultrafeeder
-sudo systemctl status fr24feed
-sudo systemctl status adsbexchange-feed
-```
-
-## Sources / upstream documentation
-
-- SDR-Enthusiasts ADS-B Ultrafeeder: https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder
-- Flightradar24 data sharing: https://www.flightradar24.com/share-your-data
-- ADSBexchange feeder instructions: https://www.adsbexchange.com/community/feeder-hub/connect-equipment/
-
-## License
-
-This repository is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
+Apache-2.0: see [LICENSE](LICENSE).

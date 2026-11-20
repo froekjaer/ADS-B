@@ -1,0 +1,36 @@
+# AIS-Catcher on the dedicated RTL-SDR.
+# SDR selected by serial number, not volatile USB bus/device path.
+# MarineTraffic and VesselFinder receive AIS NMEA over outbound UDP.
+#
+# Start with:
+# docker compose -f docker-compose.yml -f docker-compose.ais.yml up -d
+#
+# Do not expose port 8100 to the public Internet.
+
+services:
+  ais-catcher:
+    image: ghcr.io/jvde-github/ais-catcher:latest
+    container_name: ais-catcher
+    restart: unless-stopped
+
+    device_cgroup_rules:
+      - "c 189:* rwm"
+
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+
+    ports:
+      - "8100:8100/tcp"
+
+    command:
+      - "-d"
+      - "${AIS_SDR_SERIAL:?AIS SDR serial missing}"
+      - "-N"
+      - "8100"
+      - "-u"
+      - "listener.marinetraffic.com"
+      - "13350"
+      - "-u"
+      - "ais.vesselfinder.com"
+      - "6734"
+      - "-q"
