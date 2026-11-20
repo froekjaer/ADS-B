@@ -1,0 +1,16 @@
+{
+  "config": "aiscatcher",
+  "version": 1,
+  "sharing": false,
+  "receiver": [
+    {
+      "input": "rtlsdr",
+      "serial": "ais"
+    }
+  ],
+  "server": [
+    {
+      "port": 8100
+    }
+  ]
+}
